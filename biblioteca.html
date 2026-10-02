@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Acervo | Meu Acervo</title>
+  <link rel="icon" type="image/svg+xml" href="./favicon.svg" sizes="any">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="./theme.css">
+  <style>
+    :root {
+      --project-bg: var(--palette-ivory);
+      --project-shell: var(--palette-black);
+      --project-panel: var(--palette-ivory);
+      --project-card: var(--palette-ivory);
+      --project-border: var(--palette-bronze);
+      --project-brown: var(--palette-burgundy);
+      --project-brown-dark: var(--palette-plum);
+      --project-brown-soft: var(--palette-bronze);
+      --project-gold: var(--palette-bronze);
+      --project-text: var(--palette-black);
+      --project-muted: var(--palette-plum);
+      --project-success: var(--palette-bronze);
+      --project-success-soft: rgba(146, 112, 68, 0.16);
+      --project-warning: var(--palette-burgundy);
+      --project-warning-soft: rgba(87, 28, 42, 0.12);
+      --project-shadow: rgba(25, 23, 25, 0.18);
+    }
+
+    body {
+      background: var(--project-bg);
+      color: var(--project-text);
+      font-family: Georgia, "Times New Roman", serif;
+    }
+
+    .book-card {
+      background: var(--palette-ivory);
+      border: 1px solid var(--project-border);
+      box-shadow: 0 12px 28px var(--project-shadow);
+      transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+    }
+
+    .book-card:hover {
+      transform: translateY(-2px);
+      border-color: var(--palette-bronze);
+      box-shadow: 0 18px 38px rgba(25, 23, 25, 0.14);
+    }
+
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 9999px;
+      padding: 0.22rem 0.7rem;
+      font-size: 0.625rem;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      white-space: nowrap;
+    }
+
+    .status-lido { background: var(--project-success-soft); color: var(--project-success); }
+    .status-lendo { background: rgba(87, 28, 42, 0.12); color: var(--project-brown); }
+    .status-proxima { background: var(--project-warning-soft); color: var(--project-warning); }
+
+    .book-tag {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 9999px;
+      background: var(--palette-bronze-soft);
+      color: var(--project-brown-dark);
+      padding: 0.22rem 0.65rem;
+      font-size: 0.625rem;
+      font-weight: 700;
+      line-height: 1.25;
+    }
+
+    .book-tag.muted {
+      background: rgba(56, 36, 61, 0.1);
+      color: var(--project-muted);
+    }
+
+    .filter-pill {
+      color: var(--project-brown-dark);
+      background: var(--palette-ivory);
+      border: 1px solid var(--project-border);
+      border-radius: 9999px;
+      padding: 0.7rem 1rem;
+      font-weight: 700;
+      transition: all 0.2s ease;
+    }
+
+    .filter-pill.active {
+      background: var(--project-brown);
+      border-color: var(--project-brown);
+      color: var(--palette-ivory);
+    }
+
+    .narrow-scrollbar::-webkit-scrollbar {
+      height: 6px;
+    }
+
+    .narrow-scrollbar::-webkit-scrollbar-thumb {
+      background: var(--palette-bronze);
+      border-radius: 999px;
+    }
+  </style>
+</head>
+<body data-book-layout="cards" class="min-h-screen bg-[#191719] font-sans text-[#DED4C2]">
+  <div class="min-h-screen w-full bg-[linear-gradient(180deg,#191719_0%,#38243D_32%,#DED4C2_32%,#DED4C2_100%)]">
+    <header class="border-b border-[#927044]/70 bg-[#191719]/90 backdrop-blur-sm">
+      <div class="mx-auto flex max-w-[1200px] items-center justify-between gap-4 px-5 py-4 sm:px-8">
+        <a href="./index.html" class="flex items-center gap-3" aria-label="Voltar para a página inicial">
+          <div class="flex h-10 w-10 items-center justify-center rounded-full bg-[#927044] text-lg font-black text-[#DED4C2] shadow-md">E</div>
+          <div>
+            <span class="block text-[10px] uppercase tracking-[0.22em] text-[#927044]">Estante</span>
+            <span class="text-xl font-black tracking-tight text-[#DED4C2]">Virtual</span>
+          </div>
+        </a>
+
+        <div class="flex items-center gap-3">
+          <a href="./index.html" class="rounded-full border border-[#927044] bg-[#DED4C2]/5 px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-[#DED4C2] transition hover:bg-[#DED4C2]/10">Voltar</a>
+          <a href="./admin.html" class="rounded-full bg-[#927044] px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-[#DED4C2] shadow-md transition hover:bg-[#571C2A]">ADM</a>
+        </div>
+      </div>
+    </header>
+
+    <main class="mx-auto max-w-[1200px] px-5 pb-10 pt-8 sm:px-8">
+      <section class="rounded-[28px] border border-[#927044]/60 bg-[#DED4C2]/95 p-4 shadow-[0_22px_60px_rgba(25,23,25,0.22)] sm:p-6">
+        <div class="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p class="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-[#571C2A]">Minha biblioteca</p>
+            <h1 class="text-3xl font-black tracking-[0.04em] text-[#191719] sm:text-4xl">Acervo</h1>
+          </div>
+          <div class="flex items-center gap-3 rounded-full border border-[#927044] bg-[#DED4C2] px-4 py-2 text-sm font-semibold text-[#38243D]">
+            <span class="inline-flex h-2.5 w-2.5 rounded-full bg-[#927044]"></span>
+            <span><span id="total-books">0</span> livros cadastrados</span>
+          </div>
+        </div>
+
+        <div class="mb-5 flex flex-col gap-3 lg:flex-row lg:items-center">
+          <div class="relative flex-1">
+            <label for="input-library-search" class="sr-only">Pesquisar no acervo</label>
+            <div class="flex items-center rounded-full border border-[#927044] bg-[#DED4C2] px-4 shadow-sm ring-2 ring-transparent transition focus-within:ring-[#927044]/30">
+              <svg viewBox="0 0 24 24" fill="currentColor" class="mr-3 h-5 w-5 text-[#571C2A]" aria-hidden="true"><path d="M10.5 3a7.5 7.5 0 015.94 12.56l4.22 4.22 1.41-1.41-4.22-4.22A7.5 7.5 0 1110.5 3zm0 2a5.5 5.5 0 104.06 9.39A5.5 5.5 0 0010.5 5z"/></svg>
+              <input id="input-library-search" type="search" oninput="carregarListaSalva()" placeholder="Pesquisar por título, autor ou resenha..." class="h-12 w-full border-0 bg-transparent text-sm text-[#191719] outline-none placeholder:text-[#38243D]">
+            </div>
+          </div>
+
+          <div class="relative self-start">
+            <button id="filter-toggle" type="button" class="flex items-center gap-2 rounded-full border border-[#927044] bg-[#927044]/20 px-4 py-3 text-sm font-semibold text-[#38243D] shadow-sm transition hover:bg-[#927044]/35">
+              Filtrar
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-4 w-4" aria-hidden="true"><path d="M6 9l6 6 6-6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <div id="filter-menu" class="hidden absolute right-0 z-30 mt-2 w-64 rounded-2xl border border-[#927044] bg-[#DED4C2] p-2 shadow-2xl"></div>
+          </div>
+        </div>
+
+        <div class="mb-5 flex items-center justify-between gap-3 border-b border-[#927044] pb-3">
+          <p class="text-sm font-medium text-[#38243D]"><span id="visible-books">0</span> livros exibidos</p>
+          <span class="text-xs uppercase tracking-[0.18em] text-[#571C2A]">catalogo</span>
+        </div>
+
+        <ul id="books-list" class="grid gap-4 md:grid-cols-2 xl:grid-cols-3"></ul>
+      </section>
+    </main>
+  </div>
+
+  <script src="./app.js"></script>
+</body>
+</html>
