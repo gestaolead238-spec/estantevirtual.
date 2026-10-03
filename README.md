@@ -4,7 +4,7 @@
 
 O site mostra o acervo publicamente em modo de leitura. Para cadastrar, editar, excluir e importar livros, entre pela página `admin.html`; as alterações também são protegidas no servidor por uma sessão PHP.
 
-O frontend usa React, TypeScript e Vite. Para desenvolver, instale o Node.js, execute `npm ci` e inicie `npm run dev`. `npm run build` valida os tipos e gera em `dist/` as páginas otimizadas e os endpoints `api.php`, `auth.php` e `isbn-lookup.php`.
+O frontend usa React, TypeScript e Vite. Para desenvolver, instale o Node.js, execute `npm ci` e inicie `npm run dev`. `npm run build` valida os tipos e gera em `dist/` as páginas otimizadas e os endpoints `api.php`, `auth.php` e `isbn-lookup.php`. Para gerar o pacote de publicação, execute `npm run build:zip`; o arquivo `dist.zip` será criado na raiz do projeto com o conteúdo de `dist/`.
 
 Para publicar, envie o conteúdo de `dist/` para a pasta pública do site e configure o servidor para executar os arquivos PHP; habilite também as extensões PHP cURL e DOM para a busca ISBN Search. A home e o catálogo são públicos; `admin.html` autentica e `admin-tools.html` oferece as ferramentas administrativas protegidas pela sessão PHP. O e-mail inicial é `sara.pessopani@gmail.com`; ele pode ser alterado com `ESTANTE_ADMIN_EMAIL`. Defina a variável privada `ESTANTE_ADMIN_PASSWORD` no ambiente do PHP. Não coloque a senha em arquivos públicos, no JavaScript ou no repositório. Troque qualquer senha fraca antes da hospedagem.
 

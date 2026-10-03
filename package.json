@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build && cp api.php auth.php isbn-lookup.php dist/",
+    "build:zip": "npm run build && zip -r dist.zip dist",
     "preview": "vite preview"
   },
   "dependencies": {
