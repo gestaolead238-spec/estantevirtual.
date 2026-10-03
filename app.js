@@ -5,22 +5,35 @@ let acervoPronto = false;
 let acervoLoadPromise = null;
 let isAdmin = false;
 let activeFilter = { field: null, value: null };
+let activeBookmarkFilter = '';
+let profileImageData = '';
+let profileBackgroundData = '';
 let longPressTimer = null;
 
 const DEFAULT_COVER_URL = "https://via.placeholder.com/128x192?text=Sem+Capa";
 const ACERVO_API_URL = "./api.php";
 const AUTH_API_URL = "./auth.php";
+const BOOKMARK_SCHEMA_VERSION = 2;
+const LEGACY_BOOKMARK_COLORS = {
+  black: 'reading',
+  green: '',
+  yellow: 'favorite',
+  brown: 'reviewed',
+  blue: 'read'
+};
 const STATUS_LABELS = {
   lido: 'Lido',
   lendo: 'Lendo',
   proxima: 'Próxima leitura'
 };
 const BOOKMARK_COLORS = {
-  green: { label: 'verde', hex: '#16a34a' },
-  blue: { label: 'azul', hex: '#2563eb' },
-  yellow: { label: 'amarelo', hex: '#eab308' },
-  brown: { label: 'marrom', hex: '#78350f' },
-  black: { label: 'preto', hex: '#111827' }
+  favorite: { label: 'vermelho', category: 'Favoritos', hex: '#dc2626', icon: 'heart' },
+  reviewed: { label: 'resenhado', category: 'Resenhados', hex: '#927044', icon: 'review' },
+  read: { label: 'verde', category: 'Lido', hex: '#16a34a' },
+  reading: { label: 'amarelo', category: 'Lendo', hex: '#eab308' },
+  rereading: { label: 'marrom', category: 'Relendo', hex: '#78350f' },
+  abandoned: { label: 'preto', category: 'Abandonei', hex: '#111827' },
+  donation: { label: 'roxo', category: 'Para doação', hex: '#7e22ce' }
 };
 
 function sanitizeText(value) {
@@ -234,6 +247,161 @@ function aplicarFundo(background) {
   document.body.style.backgroundAttachment = background ? 'fixed' : '';
 }
 
+function obterLinkSocial(rede, valor) {
+  const username = sanitizeText(valor).replace(/^@/, '').replace(/\/$/, '');
+  if (!username) return '';
+  if (/^https?:\/\//i.test(username)) {
+    try {
+      const url = new URL(username);
+      const dominio = rede === 'instagram' ? /(^|\.)instagram\.com$/i : /(^|\.)tiktok\.com$/i;
+      return dominio.test(url.hostname) ? url.href : '';
+    } catch (error) {
+      return '';
+    }
+  }
+  if (!/^[\w.]+$/u.test(username)) return '';
+  const dominio = rede === 'instagram' ? 'https://www.instagram.com/' : 'https://www.tiktok.com/@';
+  return `${dominio}${encodeURIComponent(username)}`;
+}
+
+function obterIdentificadorSocial(rede, valor) {
+  let username = sanitizeText(valor);
+  if (/^https?:\/\//i.test(username)) {
+    try {
+      username = new URL(username).pathname.split('/').filter(Boolean)[0] || '';
+    } catch (error) {
+      return '';
+    }
+  }
+  username = username.replace(/^@/, '').replace(/\/$/, '');
+  return username ? `@${username}` : '';
+}
+
+function aplicarPerfil(perfil = {}) {
+  profileImageData = typeof perfil.photo === 'string' ? perfil.photo : '';
+  profileBackgroundData = typeof perfil.background === 'string'
+    ? perfil.background
+    : localStorage.getItem('imagem_fundo') || '';
+  aplicarFundo(profileBackgroundData);
+  const backgroundPreview = document.getElementById('profile-background-preview');
+  if (backgroundPreview) {
+    backgroundPreview.src = profileBackgroundData;
+    backgroundPreview.classList.toggle('hidden', !profileBackgroundData);
+  }
+  [document.getElementById('profile-photo'), document.getElementById('admin-profile-avatar')].forEach((photo) => {
+    if (!photo) return;
+    photo.src = profileImageData;
+    photo.classList.toggle('hidden', !profileImageData);
+  });
+  [document.getElementById('profile-avatar-fallback'), document.getElementById('admin-profile-avatar-fallback')].forEach((fallback) => {
+    fallback?.classList.toggle('hidden', Boolean(profileImageData));
+  });
+  document.getElementById('profile-avatar-fallback')?.classList.toggle('hidden', Boolean(profileImageData));
+  const editorPhoto = document.getElementById('profile-editor-photo');
+  if (editorPhoto) {
+    editorPhoto.src = profileImageData;
+    editorPhoto.classList.toggle('hidden', !profileImageData);
+  }
+
+  const instagram = document.getElementById('profile-instagram-link');
+  const tiktok = document.getElementById('profile-tiktok-link');
+  [[instagram, 'instagram', perfil.instagram], [tiktok, 'tiktok', perfil.tiktok]].forEach(([link, network, value]) => {
+    if (!link) return;
+    const href = obterLinkSocial(network, value || '');
+    link.href = href || '#';
+    const handle = link.querySelector('[data-profile-handle]');
+    if (handle) handle.textContent = obterIdentificadorSocial(network, value || '');
+    link.classList.toggle('hidden', !href);
+  });
+
+  const instagramField = document.getElementById('profile-instagram');
+  const tiktokField = document.getElementById('profile-tiktok');
+  if (instagramField) instagramField.value = perfil.instagram || '';
+  if (tiktokField) tiktokField.value = perfil.tiktok || '';
+}
+
+async function alterarFotoPerfil(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  try {
+    profileImageData = await compactarImagem(file, 1000, 0.82);
+    const photo = document.getElementById('profile-photo');
+    if (photo) {
+      photo.src = profileImageData;
+      photo.classList.remove('hidden');
+    }
+    const editorPhoto = document.getElementById('profile-editor-photo');
+    if (editorPhoto) {
+      editorPhoto.src = profileImageData;
+      editorPhoto.classList.remove('hidden');
+    }
+    document.getElementById('profile-avatar-fallback')?.classList.add('hidden');
+  } catch (error) {
+    alert(error.message);
+  } finally {
+    event.target.value = '';
+  }
+}
+
+async function alterarFundoPerfil(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  try {
+    const background = await compactarImagem(file, 1600, 0.72);
+    if (background.length > 2500000) {
+      throw new Error('A imagem de fundo é muito grande. Escolha uma imagem menor.');
+    }
+    profileBackgroundData = background;
+    aplicarFundo(background);
+    const preview = document.getElementById('profile-background-preview');
+    if (preview) {
+      preview.src = background;
+      preview.classList.remove('hidden');
+    }
+  } catch (error) {
+    alert(error.message);
+  } finally {
+    event.target.value = '';
+  }
+}
+
+async function salvarPerfil(event) {
+  event.preventDefault();
+  const button = document.getElementById('profile-save-button');
+  const message = document.getElementById('profile-save-message');
+  button.disabled = true;
+  message.textContent = 'Salvando...';
+  try {
+    const response = await fetch(ACERVO_API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'save-profile',
+        profile: {
+          photo: profileImageData,
+          background: profileBackgroundData,
+          instagram: sanitizeText(document.getElementById('profile-instagram').value),
+          tiktok: sanitizeText(document.getElementById('profile-tiktok').value)
+        }
+      })
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'Não foi possível salvar o perfil.');
+    aplicarPerfil(result.profile || {});
+    message.textContent = 'Perfil atualizado.';
+  } catch (error) {
+    message.textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function limparFundoPerfil() {
+  profileBackgroundData = '';
+  aplicarFundo('');
+  document.getElementById('profile-background-preview')?.classList.add('hidden');
+}
+
 function removerFundo() {
   localStorage.removeItem('imagem_fundo');
   aplicarFundo('');
@@ -311,58 +479,100 @@ async function buscarISBNNaCBL(isbn) {
       const data = await response.json();
       if (data.value && data.value.length > 0) {
         const livro = data.value[0];
-        preencherFormularioLivro({
+        return normalizarDadosISBN({
           title: livro.Title,
-          authors: livro.Authors || [],
-          categories: livro.Subject ? [livro.Subject] : [],
-          image: ''
-        }, livro.FormattedKey || isbn);
-        return true;
+          authors: livro.Authors,
+          publisher: livro.Imprint,
+          categories: livro.Subject,
+          isbn: livro.FormattedKey || isbn
+        });
       }
     } catch (error) {
       console.warn(`CBL falhou para o ISBN ${codigo}:`, error);
     }
   }
 
-  return false;
+  return null;
+}
+
+function normalizarListaISBN(values) {
+  const list = Array.isArray(values) ? values : values ? [values] : [];
+  return list.map((value) => {
+    if (typeof value === 'string') return sanitizeText(value);
+    if (value && typeof value === 'object') return sanitizeText(value.name || value.label || value.title || '');
+    return '';
+  }).filter(Boolean);
 }
 
 function normalizarDadosISBN(data) {
   const info = data.book || data.result || data.data || data;
-  const categories = info.categories || info.categorias || info.genre || info.genero || "";
+  const categories = info.categories || info.categorias || info.genre || info.genres || info.genero || info.Subject || info.subjects || '';
+  const authors = info.authors || info.autores || info.author || info.Authors || info.Author || [];
 
   return {
-    title: info.title || info.titulo || info.name || "",
-    authors: info.authors || info.autores || info.author || [],
-    categories: Array.isArray(categories) ? categories : [categories],
-    isbn: info.isbn || info.ISBN || info.codigo || "",
-    image: info.image || info.cover || info.capa || ""
+    title: sanitizeText(info.title || info.Title || info.titulo || info.name || info.Name || ''),
+    authors: normalizarListaISBN(authors),
+    categories: normalizarListaISBN(categories),
+    isbn: info.isbn || info.ISBN || info.codigo || info.FormattedKey || '',
+    publisher: normalizarListaISBN(info.publisher || info.publisherName || info.imprint || info.Imprint || info.publishers || []).join(', '),
+    pageCount: Number(info.pageCount || info.number_of_pages || info.NumberOfPages || 0),
+    image: info.image || info.cover || info.capa || '',
+    imageLinks: info.imageLinks || {}
   };
+}
+
+function combinarDadosISBN(results) {
+  const records = results.filter(Boolean).map(normalizarDadosISBN);
+  const firstValue = (key) => records.find((record) => {
+    const value = record[key];
+    return Array.isArray(value) ? value.length > 0 : Boolean(value);
+  })?.[key];
+
+  return {
+    title: firstValue('title') || '',
+    authors: firstValue('authors') || [],
+    categories: firstValue('categories') || [],
+    publisher: firstValue('publisher') || '',
+    pageCount: records.find((record) => record.pageCount > 0)?.pageCount || 0,
+    image: firstValue('image') || '',
+    imageLinks: firstValue('imageLinks') || {}
+  };
+}
+
+function dadosISBNCompletos(info) {
+  return Boolean(info.title && info.authors.length && info.categories.length);
 }
 
 async function buscarLivroNaAPI(query) {
   const cleanQuery = query.replace(/[^0-9a-zA-Z\s]/g, '');
-  const isIsbn = /^\d{10,13}$/.test(cleanQuery);
+  const isbnQuery = cleanQuery.replace(/\s+/g, '');
+  const isIsbn = /^\d{10,13}$/.test(isbnQuery);
 
   try {
     if (isIsbn) {
-      const encontradoNaCBL = await buscarISBNNaCBL(cleanQuery);
-      if (encontradoNaCBL) {
-        return;
+      const resultadosISBN = [];
+      const dadosCBL = await buscarISBNNaCBL(isbnQuery);
+      if (dadosCBL) resultadosISBN.push(dadosCBL);
+
+      let dadosCombinados = combinarDadosISBN(resultadosISBN);
+      if (!dadosISBNCompletos(dadosCombinados)) {
+        const dadosGoogle = await buscarISBNNoGoogleBooks(isbnQuery);
+        if (dadosGoogle) resultadosISBN.push(dadosGoogle);
+        dadosCombinados = combinarDadosISBN(resultadosISBN);
       }
 
-      const encontradoNoGoogle = await buscarISBNNoGoogleBooks(cleanQuery);
-      if (encontradoNoGoogle) {
-        return;
+      if (!dadosISBNCompletos(dadosCombinados)) {
+        const dadosOpenLibrary = await buscarISBNNaOpenLibrary(isbnQuery);
+        if (dadosOpenLibrary) resultadosISBN.push(dadosOpenLibrary);
+        dadosCombinados = combinarDadosISBN(resultadosISBN);
       }
 
-      const encontradoNaOpenLibrary = await buscarISBNNaOpenLibrary(cleanQuery);
-      if (encontradoNaOpenLibrary) {
-        return;
+      if (dadosCombinados.title) {
+        preencherFormularioLivro(dadosCombinados, isbnQuery);
+      } else {
+        mostrarFormularioSemDados(isbnQuery);
+        alert('Não foi possível localizar este ISBN em bases públicas. O ISBN foi mantido e você pode completar os dados manualmente.');
       }
-
-      mostrarFormularioSemDados(cleanQuery);
-      alert('Não foi possível localizar este ISBN em bases públicas. O ISBN foi mantido e você pode completar os dados manualmente.');
       return;
     }
 
@@ -385,26 +595,6 @@ async function buscarLivroNaAPI(query) {
       alert("Livro não encontrado na base de dados do Google.");
     }
   } catch (error) {
-    if (isIsbn) {
-      try {
-        const encontradoNoGoogle = await buscarISBNNoGoogleBooks(cleanQuery);
-        if (encontradoNoGoogle) {
-          return;
-        }
-
-        const encontradoNaOpenLibrary = await buscarISBNNaOpenLibrary(cleanQuery);
-        if (encontradoNaOpenLibrary) {
-          return;
-        }
-
-        mostrarFormularioSemDados(cleanQuery);
-        alert('Não foi possível localizar este ISBN em bases públicas. O ISBN foi mantido e você pode completar os dados manualmente.');
-        return;
-      } catch (fallbackError) {
-        console.error(fallbackError);
-      }
-    }
-
     alert(isIsbn ? "Erro ao consultar o ISBN e a base de fallback." : "Erro ao buscar dados do livro.");
     console.error(error);
   }
@@ -420,14 +610,13 @@ async function buscarISBNNoGoogleBooks(isbn) {
 
     const data = await response.json();
     if (!data.items || data.items.length === 0) {
-      return false;
+      return null;
     }
 
-    preencherFormularioLivro(data.items[0].volumeInfo, isbn);
-    return true;
+    return normalizarDadosISBN({ ...data.items[0].volumeInfo, isbn });
   } catch (error) {
     console.warn(`Google Books falhou para o ISBN ${isbn}:`, error);
-    return false;
+    return null;
   }
 }
 
@@ -443,19 +632,21 @@ async function buscarISBNNaOpenLibrary(isbn) {
     const data = await response.json();
     const livro = data[`ISBN:${isbn}`];
     if (!livro) {
-      return false;
+      return null;
     }
 
-    preencherFormularioLivro({
+    return normalizarDadosISBN({
       title: livro.title,
-      authors: livro.authors ? livro.authors.map((autor) => autor.name) : [],
-      categories: livro.subjects ? livro.subjects.map((subject) => subject.name) : [],
-      image: livro.cover ? livro.cover.medium : ""
-    }, isbn);
-    return true;
+      authors: livro.authors || [],
+      publisher: livro.publishers || [],
+      pageCount: Number(livro.number_of_pages || 0),
+      categories: livro.subjects || [],
+      image: livro.cover ? livro.cover.medium : '',
+      isbn
+    });
   } catch (error) {
     console.warn(`Open Library falhou para o ISBN ${isbn}:`, error);
-    return false;
+    return null;
   }
 }
 
@@ -465,6 +656,8 @@ function mostrarFormularioSemDados(isbn) {
 
   document.getElementById('field-title').value = '';
   document.getElementById('field-author').value = '';
+  document.getElementById('field-publisher').value = '';
+  document.getElementById('field-page-count').value = '';
   document.getElementById('field-genre').value = '';
   document.getElementById('field-isbn').value = isbn;
   document.getElementById('field-niche').value = '';
@@ -486,10 +679,13 @@ function preencherFormularioLivro(info, isbn) {
   editingBookId = null;
   const generosApi = Array.isArray(info.categories) ? info.categories.filter(Boolean).join(', ') : info.categories || '';
   const autores = Array.isArray(info.authors) ? info.authors.join(', ') : info.authors || '';
+  const editora = Array.isArray(info.publishers) ? info.publishers.join(', ') : info.publisher || info.publisherName || info.imprint || info.Imprint || info.publishers || '';
   currentCoverUrl = obterUrlCapa(info, isbn);
 
   document.getElementById('field-title').value = info.title || '';
   document.getElementById('field-author').value = autores;
+  document.getElementById('field-publisher').value = editora;
+  document.getElementById('field-page-count').value = Number(info.pageCount || info.number_of_pages || 0) || '';
   document.getElementById('field-genre').value = generosApi;
   document.getElementById('field-isbn').value = isbn;
   document.getElementById('field-niche').value = '';
@@ -530,7 +726,30 @@ function selecionarCorMarcador(color) {
     const selected = button.dataset.bookmarkColor === selectedColor;
     button.setAttribute('aria-pressed', String(selected));
     button.classList.toggle('ring-2', selected);
-    button.classList.toggle('ring-emerald-700', selected);
+    button.style.setProperty('--tw-ring-color', selectedColor ? BOOKMARK_COLORS[selectedColor].hex : '#927044');
+  });
+}
+
+function obterCorMarcador(livro) {
+  const color = livro?.bookmarkColor || '';
+  if (Number(livro?.bookmarkSchemaVersion) >= BOOKMARK_SCHEMA_VERSION) {
+    return Object.prototype.hasOwnProperty.call(BOOKMARK_COLORS, color) ? color : '';
+  }
+  return Object.prototype.hasOwnProperty.call(LEGACY_BOOKMARK_COLORS, color)
+    ? LEGACY_BOOKMARK_COLORS[color]
+    : '';
+}
+
+function renderBookmarkChoices() {
+  document.querySelectorAll('[data-bookmark-options]').forEach((container) => {
+    container.innerHTML = `
+      <button type="button" data-bookmark-color="" onclick="selecionarCorMarcador('')" class="flex h-9 w-9 items-center justify-center rounded border border-gray-400 bg-white text-sm text-gray-600" title="Sem marcador" aria-label="Sem marcador" aria-pressed="true">×</button>
+      ${Object.entries(BOOKMARK_COLORS).map(([color, marker]) => `
+        <button type="button" data-bookmark-color="${color}" onclick="selecionarCorMarcador('${color}')" class="flex h-9 w-9 items-center justify-center rounded border bg-white transition" style="border-color:${marker.hex};--tw-ring-color:${marker.hex}" title="${marker.category}" aria-label="${marker.category}" aria-pressed="false">
+          ${renderBookmarkIcon(color, 'h-6 w-6')}
+        </button>
+      `).join('')}
+    `;
   });
 }
 
@@ -557,6 +776,7 @@ async function enviarAcervo(dados) {
   localStorage.setItem('meus_livros', JSON.stringify(resultado.books));
   carregarListaSalva();
   renderFilterMenu();
+  renderBookmarkFilters();
   return resultado.books;
 }
 
@@ -566,20 +786,41 @@ async function carregarAcervoRemoto() {
   if (!response.ok || !Array.isArray(resultado.books)) {
     throw new Error(resultado.error || 'Não foi possível carregar o acervo do servidor.');
   }
+  aplicarPerfil(resultado.profile || {});
+  let livrosRemotos = resultado.books;
 
-  const livrosLocais = obterLivrosSalvos();
-  const precisaMigrar = resultado.books.length === 0 || livrosLocais.some((livro) => !livro.id);
-  if (precisaMigrar && livrosLocais.length > 0) {
-    if (isAdmin) {
-      await enviarAcervo({ action: 'import', books: livrosLocais });
-      return;
+  if (isAdmin && livrosRemotos.some((livro) => Number(livro.bookmarkSchemaVersion || 0) < BOOKMARK_SCHEMA_VERSION)) {
+    const migrationResponse = await fetch(ACERVO_API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'migrate-bookmarks' })
+    });
+    const migrationResult = await migrationResponse.json();
+    if (!migrationResponse.ok || !Array.isArray(migrationResult.books)) {
+      throw new Error(migrationResult.error || 'Não foi possível atualizar as categorias dos marcadores.');
     }
-    if (resultado.books.length === 0) return;
+    livrosRemotos = migrationResult.books;
   }
 
-  localStorage.setItem('meus_livros', JSON.stringify(resultado.books));
+  const livrosLocais = obterLivrosSalvos();
+  const precisaMigrar = livrosRemotos.length === 0 || livrosLocais.some((livro) => !livro.id);
+  if (precisaMigrar && livrosLocais.length > 0) {
+    if (isAdmin) {
+      const livrosLocaisAtualizados = livrosLocais.map((livro) => ({
+        ...livro,
+        bookmarkColor: obterCorMarcador(livro),
+        bookmarkSchemaVersion: BOOKMARK_SCHEMA_VERSION
+      }));
+      await enviarAcervo({ action: 'import', books: livrosLocaisAtualizados });
+      return;
+    }
+    if (livrosRemotos.length === 0) return;
+  }
+
+  localStorage.setItem('meus_livros', JSON.stringify(livrosRemotos));
   carregarListaSalva();
   renderFilterMenu();
+  renderBookmarkFilters();
 }
 
 async function salvarLivro() {
@@ -608,6 +849,8 @@ async function salvarLivro() {
 
   const title = sanitizeText(document.getElementById('field-title').value);
   const author = sanitizeText(document.getElementById('field-author').value);
+  const publisher = sanitizeText(document.getElementById('field-publisher').value);
+  const pageCount = Math.max(0, Number(document.getElementById('field-page-count').value) || 0);
   const genre = sanitizeText(document.getElementById('field-genre').value);
   const niche = sanitizeText(document.getElementById('field-niche').value);
   const isbn = sanitizeText(document.getElementById('field-isbn').value);
@@ -629,6 +872,8 @@ async function salvarLivro() {
     ...livroAtual,
     title,
     author,
+    publisher,
+    pageCount,
     genre: genre || 'Não informado',
     niche: niche || 'Sem nicho',
     isbn,
@@ -638,6 +883,7 @@ async function salvarLivro() {
     acquiredDate,
     finishedDate,
     bookmarkColor,
+    bookmarkSchemaVersion: BOOKMARK_SCHEMA_VERSION,
     status: livroAtual.status || ''
   };
 
@@ -659,13 +905,15 @@ function editarLivro(index) {
   currentCoverUrl = livro.cover || '';
   document.getElementById('field-title').value = livro.title || '';
   document.getElementById('field-author').value = livro.author || '';
+  document.getElementById('field-publisher').value = livro.publisher || '';
+  document.getElementById('field-page-count').value = Number(livro.pageCount) || '';
   document.getElementById('field-genre').value = livro.genre === 'Não informado' ? '' : livro.genre || '';
   document.getElementById('field-niche').value = livro.niche === 'Sem nicho' ? '' : livro.niche || '';
   document.getElementById('field-isbn').value = livro.isbn || '';
   document.getElementById('field-acquired-date').value = livro.acquiredDate || '';
   document.getElementById('field-finished-date').value = livro.finishedDate || '';
   document.getElementById('field-comment').value = livro.comment || '';
-  selecionarCorMarcador(livro.bookmarkColor || '');
+  selecionarCorMarcador(obterCorMarcador(livro));
   document.getElementById('book-cover').src = currentCoverUrl || DEFAULT_COVER_URL;
   selecionarNota(Number(livro.rating) || 0);
   document.getElementById('form-title').textContent = 'Editar Livro';
@@ -706,14 +954,26 @@ function getStatusBadge(status) {
   return `<span class="inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold ${colorMap[status]}">${STATUS_LABELS[status]}</span>`;
 }
 
+function renderBookmarkIcon(color, className = 'h-10 w-8') {
+  const marker = BOOKMARK_COLORS[color];
+  if (!marker) return '';
+  if (marker.icon === 'heart') {
+    return `<svg viewBox="0 0 24 24" class="${className}" aria-hidden="true" focusable="false"><path d="M20.8 4.9a5.5 5.5 0 0 0-7.8 0L12 5.9l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.3 1-1a5.5 5.5 0 0 0 0-7.8Z" fill="${marker.hex}" stroke="white" stroke-linejoin="round" stroke-width="1.4"></path></svg>`;
+  }
+  if (marker.icon === 'review') {
+    return `<svg viewBox="0 0 24 24" class="${className}" fill="none" stroke="${marker.hex}" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" aria-hidden="true" focusable="false"><path d="M4 5h10M4 10h8M4 15h6M4 20h6"/><path d="m14 17 5.8-5.8 2 2L16 19l-2.5.5z"/><path d="m18.8 12.2 2 2"/></svg>`;
+  }
+  return `<svg viewBox="0 0 28 40" class="${className}" aria-hidden="true" focusable="false"><path d="M6 2h16a3 3 0 0 1 3 3v32L14 29.5 3 37V5a3 3 0 0 1 3-3Z" fill="${marker.hex}" stroke="white" stroke-linejoin="round" stroke-width="2.5"></path><path d="M8 6h12" fill="none" stroke="white" stroke-linecap="round" stroke-opacity=".58" stroke-width="1.5"></path></svg>`;
+}
+
 function renderMarcadorLivro(color) {
   const marker = BOOKMARK_COLORS[color];
   if (!marker) return '';
-  return `<span class="absolute right-3 top-3 z-10 h-7 w-6" title="Marcador ${marker.label}" aria-label="Marcador ${marker.label}">
-    <svg viewBox="0 0 24 28" class="h-full w-full" aria-hidden="true" focusable="false">
-      <path d="M5 3.5h14v21l-7-4.8-7 4.8z" fill="none" stroke="${marker.hex}" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5"></path>
-    </svg>
-  </span>`;
+  const symbol = Boolean(marker.icon);
+  const containerClass = symbol
+    ? 'absolute left-2 top-2 z-10 flex h-9 w-9 items-center justify-center rounded-full border-2 border-white bg-white p-1 shadow-md'
+    : 'absolute left-2 top-2 z-10 h-11 w-8 drop-shadow-md';
+  return `<span class="${containerClass}" title="${marker.category}" aria-label="${marker.category}">${renderBookmarkIcon(color, 'h-full w-full')}</span>`;
 }
 
 function renderFilterMenu() {
@@ -756,7 +1016,7 @@ function renderFilterMenu() {
                 const starText = group.key === 'rating' ? `${'★'.repeat(Number(value))}` : value;
                 return `
                   <button type="button" data-filter-field="${group.key}" data-filter-value="${value}" class="mb-1 block w-full rounded px-2 py-1 text-left text-[11px] text-gray-700 hover:bg-white ${activeFilter && activeFilter.field === group.key && activeFilter.value === value ? 'bg-blue-100 text-blue-700' : ''}">
-                    ${group.key === 'rating' ? `${starText} e acima` : escaparHtml(value)}
+                    ${group.key === 'rating' ? starText : escaparHtml(value)}
                   </button>
                 `;
               }).join('')}
@@ -768,37 +1028,115 @@ function renderFilterMenu() {
   `;
 }
 
+function renderBookmarkFilters() {
+  const container = document.getElementById('bookmark-filters');
+  if (!container) return;
+
+  container.innerHTML = `
+    ${Object.entries(BOOKMARK_COLORS).map(([color, marker]) => `
+      <button type="button" data-bookmark-filter="${color}" class="group flex w-16 shrink-0 flex-col items-center gap-1 rounded px-1 py-1 text-center transition hover:bg-[#927044]/10 ${activeBookmarkFilter === color ? 'bg-[#927044]/15' : ''}" title="Filtrar: ${marker.category}" aria-label="Filtrar livros: ${marker.category}" aria-pressed="${activeBookmarkFilter === color}" style="--bookmark-color:${marker.hex}">
+        <span class="flex h-10 w-8 items-center justify-center drop-shadow-sm transition-transform group-hover:-translate-y-0.5">${renderBookmarkIcon(color, 'h-9 w-8')}</span>
+        <span class="text-[10px] font-semibold leading-tight text-[#38243D]">${marker.category}</span>
+      </button>
+    `).join('')}
+  `;
+}
+
+function aplicarFiltroMarcador(color) {
+  activeBookmarkFilter = Object.prototype.hasOwnProperty.call(BOOKMARK_COLORS, color)
+    ? activeBookmarkFilter === color ? '' : color
+    : '';
+  renderBookmarkFilters();
+  carregarListaSalva();
+}
+
 function aplicarFiltro(field, value) {
   activeFilter = { field, value };
   renderFilterMenu();
+  renderBookmarkFilters();
   carregarListaSalva();
 }
 
 function limparFiltro() {
   activeFilter = { field: null, value: null };
+  activeBookmarkFilter = '';
+  renderBookmarkFilters();
   renderFilterMenu();
   carregarListaSalva();
+}
+
+function atualizarResumoAcervo(livros) {
+  const totalNode = document.getElementById('total-books');
+  if (totalNode) totalNode.textContent = new Intl.NumberFormat('pt-BR').format(livros.length);
+}
+
+function renderLivroNaLista(livro, index, cardLayout, canManageBooks) {
+  const bookmarkColor = obterCorMarcador(livro);
+  const controls = canManageBooks ? `
+    <div class="mt-2 flex gap-1 border-t border-[#927044]/30 pt-1.5">
+      <button type="button" onclick="editarLivro(${index})" class="rounded px-2 py-1 text-[10px] font-semibold text-[#571C2A] hover:bg-[#927044]/15" aria-label="Editar ${escaparHtml(livro.title)}">Editar</button>
+      <button type="button" onclick="excluirLivro(${index})" class="rounded px-2 py-1 text-[10px] font-semibold text-[#571C2A] hover:bg-[#927044]/15" aria-label="Excluir ${escaparHtml(livro.title)}">Excluir</button>
+    </div>
+  ` : '';
+
+  if (cardLayout) {
+    return `
+      <li data-book-index="${index}" class="book-card group relative min-w-0">
+        <div class="relative aspect-[2/3] overflow-hidden bg-[#DED4C2]">
+          <img src="${escaparHtml(livro.cover || DEFAULT_COVER_URL)}" alt="Capa de ${escaparHtml(livro.title)}" onerror="usarCapaPadrao(this)" class="h-full w-full object-cover">
+          ${renderMarcadorLivro(bookmarkColor)}
+        </div>
+        <div class="min-w-0 pt-2">
+          <div class="flex items-start justify-between gap-1">
+            <p class="line-clamp-2 min-w-0 text-xs font-semibold leading-4 text-[#191719]" title="${escaparHtml(livro.title)}">${escaparHtml(livro.title)}</p>
+            ${getStatusBadge(livro.status || '')}
+          </div>
+          <p class="mt-1 truncate text-[11px] leading-4 text-[#38243D]" title="${escaparHtml(livro.author || 'Autor não informado')}">${escaparHtml(livro.author || 'Autor não informado')}</p>
+          ${Number(livro.rating) > 0 ? `<p class="mt-1 text-[10px] font-semibold text-[#927044]" aria-label="Nota ${Number(livro.rating)} de 5">${'★'.repeat(Math.min(5, Number(livro.rating)))}</p>` : ''}
+          ${controls}
+        </div>
+      </li>
+    `;
+  }
+
+  return `
+    <li data-book-index="${index}" class="relative flex items-center gap-3 border-b border-[#927044]/25 py-3 text-sm">
+      ${renderMarcadorLivro(bookmarkColor)}
+      <img src="${escaparHtml(livro.cover || DEFAULT_COVER_URL)}" alt="Capa de ${escaparHtml(livro.title)}" onerror="usarCapaPadrao(this)" class="h-14 w-10 shrink-0 rounded object-cover">
+      <div class="min-w-0 flex-1">
+        <div class="flex items-start justify-between gap-2">
+          <p class="truncate text-sm font-semibold text-[#191719]">${escaparHtml(livro.title)}</p>
+          ${getStatusBadge(livro.status || '')}
+        </div>
+        <p class="mt-1 truncate text-xs text-[#38243D]">${escaparHtml(livro.author || 'Autor não informado')}</p>
+        ${livro.publisher ? `<p class="mt-1 truncate text-xs text-[#38243D]">${escaparHtml(livro.publisher)}</p>` : ''}
+        <span class="book-tag mt-1">${escaparHtml(livro.genre || 'Gênero')}</span>
+      </div>
+      ${controls}
+    </li>
+  `;
 }
 
 function carregarListaSalva() {
   const livros = obterLivrosSalvos();
   const listEl = document.getElementById('books-list');
   const cardLayout = document.body.dataset.bookLayout === 'cards';
-  const canManageBooks = isAdmin && !cardLayout;
-  document.getElementById('total-books').innerText = livros.length;
+  const canManageBooks = isAdmin;
+  atualizarResumoAcervo(livros);
 
   const query = sanitizeText(document.getElementById('input-library-search').value).toLocaleLowerCase('pt-BR');
   const livrosFiltrados = livros
     .map((livro, index) => ({ livro, index }))
     .filter(({ livro }) => {
-      const matchesQuery = [livro.title, livro.author, livro.genre, livro.isbn, livro.comment, livro.status]
+      const matchesQuery = [livro.title, livro.author, livro.publisher, livro.genre, livro.isbn, livro.comment, livro.status]
         .some((value) => String(value || '').toLocaleLowerCase('pt-BR').includes(query));
 
       if (!matchesQuery) return false;
+      if (activeBookmarkFilter && obterCorMarcador(livro) !== activeBookmarkFilter) return false;
       if (!activeFilter || !activeFilter.field || !activeFilter.value) return true;
 
       if (activeFilter.field === 'rating') {
-        return Number(livro.rating || 0) >= Number(activeFilter.value);
+        return Number(livro.rating || 0) === Number(activeFilter.value);
       }
 
       const value = sanitizeText(livro[activeFilter.field] || '').toLocaleLowerCase('pt-BR');
@@ -817,30 +1155,7 @@ function carregarListaSalva() {
     return;
   }
 
-  listEl.innerHTML = livrosFiltrados.map(({ livro: l, index }) => `
-    <li data-book-index="${index}" class="book-card ${cardLayout ? 'group relative flex min-w-0 flex-col gap-3 rounded-[22px] p-3.5' : 'relative py-3 flex gap-3 items-center text-sm'}">
-      ${renderMarcadorLivro(l.bookmarkColor)}
-      <div class="${cardLayout ? 'flex w-full items-start gap-3' : 'flex items-center gap-3'}">
-        <img src="${escaparHtml(l.cover || DEFAULT_COVER_URL)}" alt="Capa de ${escaparHtml(l.title)}" onerror="usarCapaPadrao(this)" class="${cardLayout ? 'h-32 w-24 shrink-0 rounded-xl border border-[#927044] bg-[#DED4C2] object-cover shadow-sm' : 'w-10 h-14 object-cover rounded shadow-sm bg-gray-100'}">
-        <div class="min-w-0 flex-1">
-          <div class="flex items-start justify-between gap-2">
-            <p class="font-black leading-5 text-[#191719]" style="${cardLayout ? 'font-size: 0.98rem;' : 'font-size: 0.9rem;'}">${escaparHtml(l.title)}</p>
-            ${getStatusBadge(l.status || '')}
-          </div>
-          <p class="mt-1 text-xs font-medium text-[#38243D]">${escaparHtml(l.author || 'Autor não informado')}</p>
-          <div class="mt-2 flex flex-wrap gap-1">
-            <span class="book-tag">${escaparHtml(l.genre || 'Gênero')}</span>
-          </div>
-          ${Number(l.rating) > 0 ? `<p class="mt-2 text-xs font-bold text-[#927044]" aria-label="Nota ${Number(l.rating)} de 5">${'★'.repeat(Math.min(5, Number(l.rating)))}${'☆'.repeat(5 - Number(l.rating))}</p>` : ''}
-          ${l.comment ? `<p class="mt-2 text-xs leading-5 text-[#38243D]" style="display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;">${escaparHtml(l.comment)}</p>` : ''}
-        </div>
-      </div>
-      ${canManageBooks ? `<div class="shrink-0 flex gap-1 ${cardLayout ? 'w-full justify-end border-t border-[#927044] pt-2' : ''}">
-        <button type="button" onclick="editarLivro(${index})" class="px-3 py-2 text-xs font-semibold text-[#571C2A] hover:bg-[#927044]/20 rounded" aria-label="Editar ${escaparHtml(l.title)}">Editar</button>
-        <button type="button" onclick="excluirLivro(${index})" class="px-3 py-2 text-xs font-semibold text-[#571C2A] hover:bg-[#927044]/20 rounded" aria-label="Excluir ${escaparHtml(l.title)}">Excluir</button>
-      </div>` : ''}
-    </li>
-  `).join('');
+  listEl.innerHTML = livrosFiltrados.map(({ livro, index }) => renderLivroNaLista(livro, index, cardLayout, canManageBooks)).join('');
 }
 
 function formatarData(value) {
@@ -858,7 +1173,7 @@ function fecharMenuEtiqueta() {
 }
 
 function abrirMenuEtiqueta(event, index) {
-  if (!isAdmin || document.body.dataset.bookLayout === 'cards') return;
+  if (!isAdmin) return;
   const menu = document.getElementById('book-status-menu');
   if (!menu) return;
 
@@ -893,7 +1208,7 @@ async function aplicarEtiquetaLivro(index, value) {
 }
 
 function iniciarLongPress(event) {
-  if (!isAdmin || document.body.dataset.bookLayout === 'cards') return;
+  if (!isAdmin) return;
   const targetButton = event.target.closest('button');
   if (targetButton) return;
 
@@ -921,7 +1236,11 @@ function exportarAcervo() {
     format: 'estantevirtual-acervo',
     version: 1,
     exportedAt: new Date().toISOString(),
-    books: obterLivrosSalvos()
+    books: obterLivrosSalvos().map((livro) => ({
+      ...livro,
+      bookmarkColor: obterCorMarcador(livro),
+      bookmarkSchemaVersion: BOOKMARK_SCHEMA_VERSION
+    }))
   };
   const blob = new Blob([JSON.stringify(arquivo, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
@@ -953,7 +1272,16 @@ async function importarAcervo(event) {
         ? `isbn:${livro.isbn}`
         : `livro:${livro.title.trim().toLocaleLowerCase('pt-BR')}|${(livro.author || '').trim().toLocaleLowerCase('pt-BR')}`;
       if (!chaves.has(chave)) {
-        livros.push({ genre: 'Não informado', niche: 'Sem nicho', rating: 0, comment: '', status: '', ...livro });
+        livros.push({
+          genre: 'Não informado',
+          niche: 'Sem nicho',
+          rating: 0,
+          comment: '',
+          status: '',
+          ...livro,
+          bookmarkColor: obterCorMarcador(livro),
+          bookmarkSchemaVersion: BOOKMARK_SCHEMA_VERSION
+        });
         chaves.add(chave);
         adicionados += 1;
       }
@@ -973,6 +1301,8 @@ document.addEventListener('DOMContentLoaded', () => {
   if (document.getElementById('auth-form')) return;
 
   renderFilterMenu();
+  renderBookmarkFilters();
+  renderBookmarkChoices();
   carregarListaSalva();
   aplicarFundo(localStorage.getItem('imagem_fundo') || '');
 
@@ -983,6 +1313,36 @@ document.addEventListener('DOMContentLoaded', () => {
       filterMenu.classList.toggle('hidden');
     });
   }
+
+  document.querySelectorAll('[data-library-search-toggle]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const wrapper = document.getElementById(button.getAttribute('aria-controls'));
+      const input = wrapper?.querySelector('input[type="search"]');
+      if (!wrapper || !input) return;
+      const opening = wrapper.classList.contains('hidden');
+      wrapper.classList.toggle('hidden', !opening);
+      document.querySelectorAll('[data-library-search-toggle]').forEach((toggle) => {
+        toggle.setAttribute('aria-expanded', String(opening));
+      });
+      if (opening) {
+        input.focus();
+      } else {
+        input.value = '';
+        carregarListaSalva();
+      }
+    });
+  });
+
+  const profileForm = document.getElementById('profile-form');
+  profileForm?.addEventListener('submit', salvarPerfil);
+  document.getElementById('profile-photo-upload')?.addEventListener('change', alterarFotoPerfil);
+  document.getElementById('profile-background-upload')?.addEventListener('change', alterarFundoPerfil);
+  document.getElementById('profile-background-clear')?.addEventListener('click', limparFundoPerfil);
+
+  document.getElementById('bookmark-filters')?.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-bookmark-filter]');
+    if (button) aplicarFiltroMarcador(button.dataset.bookmarkFilter);
+  });
 
   filterMenu?.addEventListener('click', (event) => {
     const clearButton = event.target.closest('[data-filter-clear]');

@@ -66,7 +66,15 @@ try {
     unset($livro);
 
     if ($metodo === 'GET') {
-        responder(200, ['books' => $livros]);
+        $perfilPath = $diretorio . '/perfil.json';
+        $perfil = [];
+        if (is_file($perfilPath)) {
+            $perfilLido = json_decode((string) file_get_contents($perfilPath), true);
+            if (is_array($perfilLido)) {
+                $perfil = $perfilLido;
+            }
+        }
+        responder(200, ['books' => $livros, 'profile' => $perfil]);
     }
 
     if ($metodo !== 'POST') {
@@ -79,7 +87,69 @@ try {
         responder(400, ['error' => 'Requisição JSON inválida.']);
     }
 
-    if (($dados['action'] ?? '') === 'save') {
+    if (($dados['action'] ?? '') === 'save-profile') {
+        $perfilRecebido = $dados['profile'] ?? null;
+        if (!is_array($perfilRecebido)) {
+            responder(400, ['error' => 'Os dados do perfil são inválidos.']);
+        }
+        $foto = $perfilRecebido['photo'] ?? '';
+        $fundo = $perfilRecebido['background'] ?? '';
+        $fundoInicial = $perfilRecebido['homeBackground'] ?? '';
+        $fundoAcervo = $perfilRecebido['catalogBackground'] ?? '';
+        $mensagemApresentacao = $perfilRecebido['introMessage'] ?? '';
+        $tema = $perfilRecebido['theme'] ?? 'vitoriano';
+        $instagram = $perfilRecebido['instagram'] ?? '';
+        $tiktok = $perfilRecebido['tiktok'] ?? '';
+        foreach ([
+            'foto' => $foto,
+            'fundo' => $fundo,
+            'fundo da página inicial' => $fundoInicial,
+            'fundo do acervo' => $fundoAcervo,
+        ] as $campo => $imagem) {
+            if (!is_string($imagem) || strlen($imagem) > 2500000 || ($imagem !== '' && !preg_match('#^data:image/jpeg;base64,[A-Za-z0-9+/]+={0,2}$#', $imagem))) {
+                responder(400, ['error' => 'A imagem de ' . $campo . ' é inválida ou muito grande.']);
+            }
+        }
+        $temasPermitidos = ['vitoriano', 'gold', 'gotico', 'sombrio', 'rock', 'jardim-secreto', 'oceano'];
+        if (!is_string($mensagemApresentacao) || strlen($mensagemApresentacao) > 10000 || !is_string($tema) || !in_array($tema, $temasPermitidos, true)) {
+            responder(400, ['error' => 'A mensagem ou as cores da interface são inválidas.']);
+        }
+        if (!is_string($instagram) || strlen($instagram) > 100 || !is_string($tiktok) || strlen($tiktok) > 100) {
+            responder(400, ['error' => 'Os perfis sociais precisam ter até 100 caracteres.']);
+        }
+        $perfil = [
+            'photo' => $foto,
+            'background' => $fundo,
+            'homeBackground' => $fundoInicial,
+            'catalogBackground' => $fundoAcervo,
+            'introMessage' => $mensagemApresentacao,
+            'theme' => $tema,
+            'instagram' => trim($instagram),
+            'tiktok' => trim($tiktok),
+        ];
+        $perfilSalvo = json_encode($perfil, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+        if (file_put_contents($diretorio . '/perfil.json', $perfilSalvo, LOCK_EX) === false) {
+            throw new RuntimeException('Não foi possível gravar o perfil.');
+        }
+        responder(200, ['profile' => $perfil]);
+    } elseif (($dados['action'] ?? '') === 'migrate-bookmarks') {
+        $coresLegadas = [
+            'black' => 'reading',
+            'green' => '',
+            'yellow' => 'favorite',
+            'brown' => 'reviewed',
+            'blue' => 'read',
+        ];
+        foreach ($livros as &$livro) {
+            if ((int) ($livro['bookmarkSchemaVersion'] ?? 0) >= 2) {
+                continue;
+            }
+            $corAntiga = $livro['bookmarkColor'] ?? '';
+            $livro['bookmarkColor'] = $coresLegadas[$corAntiga] ?? '';
+            $livro['bookmarkSchemaVersion'] = 2;
+        }
+        unset($livro);
+    } elseif (($dados['action'] ?? '') === 'save') {
         $livro = $dados['book'] ?? null;
         if (!is_array($livro) || !is_string($livro['title'] ?? null) || trim($livro['title']) === '') {
             responder(400, ['error' => 'O livro precisa de um título.']);

@@ -1,35 +1,14 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="pt-BR">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Administração | Meu Acervo</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="stylesheet" href="./theme.css">
-</head>
-<body class="min-h-screen bg-cover bg-center p-4" style="background-image: linear-gradient(rgba(25,23,25,0.72), rgba(56,36,61,0.82)), url('https://images.unsplash.com/photo-1507842217343-583bb7270b66?auto=format&fit=crop&w=1600&q=85');">
-  <main class="mx-auto flex min-h-[calc(100vh-2rem)] max-w-md flex-col justify-center">
-    <a href="./index.html" class="mb-5 text-sm font-medium text-white underline decoration-white/60 underline-offset-4">Voltar ao acervo</a>
-    <section class="rounded-lg border border-white/40 bg-white/95 p-6 shadow-2xl backdrop-blur-sm">
-      <div class="mb-6">
-        <p class="mb-2 text-xs font-bold uppercase text-emerald-800">Área administrativa</p>
-        <h1 class="text-2xl font-bold text-gray-900">Entrar no acervo</h1>
-      </div>
-
-      <form id="auth-form" class="space-y-4" novalidate>
-        <div>
-          <label for="auth-email" class="mb-1 block text-sm font-semibold text-gray-700">E-mail</label>
-          <input id="auth-email" type="email" autocomplete="username" value="sara.pessopani@gmail.com" required class="w-full rounded border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-100">
-        </div>
-        <div>
-          <label for="auth-password" class="mb-1 block text-sm font-semibold text-gray-700">Senha</label>
-          <input id="auth-password" type="password" autocomplete="current-password" required class="w-full rounded border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-100">
-        </div>
-        <div id="auth-message" role="status" aria-live="polite" class="hidden rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"></div>
-        <button id="auth-submit" type="submit" class="w-full rounded bg-emerald-800 px-4 py-3 text-sm font-semibold text-white hover:bg-emerald-900 disabled:cursor-wait disabled:opacity-60">Entrar</button>
-      </form>
-    </section>
-  </main>
-  <script src="./app.js"></script>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f3f9fa" />
+    <title>Acesso administrativo | Estante Da Sara</title>
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+  </head>
+  <body>
+    <div id="root" data-login="true"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
 </html>
